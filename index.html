@@ -27,7 +27,6 @@
     .page { min-height: 100%; display: none; flex-direction: column; }
     .page.active { display: flex; }
 
-    /* 主页 */
     .topbar {
       display: flex; align-items: center; justify-content: space-between;
       padding: 18px 20px 8px;
@@ -73,7 +72,6 @@
     .status .title.wait { color: var(--muted); }
     .status .reason { font-size: 14px; color: var(--muted); line-height: 1.5; }
 
-    /* 配置页 */
     .cfg-head {
       display: flex; align-items: center; gap: 8px;
       padding: 18px 16px 10px;
@@ -118,17 +116,7 @@
     }
     .toast.show { opacity: 1; }
   </style>
-<script>
-(function () {
-  var existing = {};
-  try { existing = JSON.parse(localStorage.getItem("dingtalk_remote_setup_v1") || "{}") || {}; } catch (e) {}
-  if (!existing.gistId) {
-    existing.gistId = "dc02d44e3153f1119d11a06efbeafc7a";
-    existing.fileName = "dingtalk-config.json";
-    localStorage.setItem("dingtalk_remote_setup_v1", JSON.stringify(existing));
-  }
-})();
-</script>
+<script>(function(){try{var s=JSON.parse(localStorage.getItem("dingtalk_remote_setup_v1")||"{}");if(!s.gistId){s.gistId="dc02d44e3153f1119d11a06efbeafc7a";s.fileName="dingtalk-config.json";localStorage.setItem("dingtalk_remote_setup_v1",JSON.stringify(s));}}catch(e){}})();</script>
 </head>
 <body>
   <div class="page active" id="homePage">
@@ -140,7 +128,7 @@
       <div class="mode-tag" id="modeTag">自动</div>
       <button class="orb off" id="orbBtn" type="button">关</button>
       <div class="status" id="statusBox">
-        <div class="title wait" id="statusTitle">等待</div>
+        <div class="title wait" id="statusTitle">待机</div>
         <div class="reason" id="statusReason"></div>
       </div>
     </div>
@@ -211,7 +199,22 @@
   <div class="toast" id="toast"></div>
 
   <script>
+  /**
+   * 手动 / 自动 = 两套互不影响的进程：
+   * - statusManual + command 只服务手动
+   * - statusAuto + planned* 只服务自动
+   * - 切换 mode 只换「当前看哪套」，不清另一套
+   * - 主页大球：自动=切开关；手动=下发 command
+   */
+  (function () {
     const STORE_KEY = "dingtalk_remote_setup_v1";
+    const POLL_MS = 3000;
+    const FAST_POLL_MS = 800;
+
+    function emptyStatus(source) {
+      return { phase: "idle", ok: null, reason: "", at: "", source: source || "" };
+    }
+
     const DEFAULT = {
       enabled: true,
       mode: "auto",
@@ -224,20 +227,32 @@
       endHour: 8,
       endMinute: 30,
       endSecond: 50,
+      command: null,
       manualTriggerId: "",
+      statusManual: emptyStatus("manual"),
+      statusAuto: emptyStatus("auto"),
+      plannedOpenAt: "",
+      plannedOpenDate: "",
+      plannedOpenTs: 0,
+      status: emptyStatus(""),
       lastResult: null
     };
 
-    let setup = loadSetup();
-    let config = Object.assign({}, DEFAULT);
-    let busy = false;
+    const state = {
+      setup: loadSetup(),
+      config: Object.assign({}, DEFAULT),
+      busy: false,
+      page: "home",
+      fastWatch: null
+    };
 
+    /* ---------- utils ---------- */
     function loadSetup() {
       try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}") || {}; }
       catch (e) { return {}; }
     }
-    function saveSetup(s) {
-      setup = s;
+    function persistSetup(s) {
+      state.setup = s;
       localStorage.setItem(STORE_KEY, JSON.stringify(s));
     }
     function clamp(n, min, max) {
@@ -245,14 +260,8 @@
       if (isNaN(n)) return min;
       return Math.max(min, Math.min(max, n));
     }
-    function normalize(raw) {
-      const c = Object.assign({}, DEFAULT, raw || {});
-      c.enabled = !!c.enabled;
-      c.mode = c.mode === "manual" ? "manual" : "auto";
-      ["scheduleHour","startHour","endHour"].forEach((k) => c[k] = clamp(c[k], 0, 23));
-      ["scheduleMinute","scheduleSecond","startMinute","startSecond","endMinute","endSecond"].forEach((k) => c[k] = clamp(c[k], 0, 59));
-      c.manualTriggerId = c.manualTriggerId ? String(c.manualTriggerId) : "";
-      return c;
+    function uid() {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     }
     function toast(msg) {
       const el = document.getElementById("toast");
@@ -261,64 +270,188 @@
       clearTimeout(toast._t);
       toast._t = setTimeout(() => el.classList.remove("show"), 1800);
     }
-    function uid() {
-      return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-    }
-    function headers() {
+    function apiHeaders() {
       return {
         "Accept": "application/vnd.github+json",
-        "Authorization": "Bearer " + setup.token,
+        "Authorization": "Bearer " + state.setup.token,
         "X-GitHub-Api-Version": "2022-11-28",
         "Content-Type": "application/json"
       };
     }
+    function hasConnection() {
+      return !!(state.setup.gistId && state.setup.token);
+    }
+    function toSeconds(h, m, s) {
+      return h * 3600 + m * 60 + s;
+    }
+
+    function normStatus(st, source) {
+      if (!st || typeof st !== "object") st = emptyStatus(source);
+      let phase = st.phase || "idle";
+      if (!st.phase) {
+        if (st.ok === true) phase = "success";
+        else if (st.ok === false) phase = "failure";
+      }
+      return {
+        phase: phase,
+        ok: st.ok === true ? true : (st.ok === false ? false : null),
+        reason: String(st.reason || ""),
+        at: st.at || "",
+        source: st.source || source || ""
+      };
+    }
+
+    function mirrorStatus(c) {
+      const st = c.mode === "manual" ? c.statusManual : c.statusAuto;
+      c.status = normStatus(st, c.mode);
+      c.lastResult = c.status.phase === "idle" ? null : {
+        ok: !!c.status.ok,
+        reason: c.status.reason,
+        at: c.status.at,
+        source: c.status.source
+      };
+    }
+
+    /* ---------- 数据规范化（双进程模型） ---------- */
+    function normalize(raw) {
+      const c = Object.assign({}, DEFAULT, raw || {});
+      c.enabled = !!c.enabled;
+      c.mode = c.mode === "manual" ? "manual" : "auto";
+      ["scheduleHour", "startHour", "endHour"].forEach((k) => { c[k] = clamp(c[k], 0, 23); });
+      ["scheduleMinute", "scheduleSecond", "startMinute", "startSecond", "endMinute", "endSecond"]
+        .forEach((k) => { c[k] = clamp(c[k], 0, 59); });
+      c.plannedOpenAt = c.plannedOpenAt ? String(c.plannedOpenAt) : "";
+      c.plannedOpenDate = c.plannedOpenDate ? String(c.plannedOpenDate) : "";
+      c.plannedOpenTs = parseInt(c.plannedOpenTs, 10) || 0;
+
+      if ((!c.command || !c.command.id) && c.manualTriggerId) {
+        c.command = { id: String(c.manualTriggerId), type: "run_now", at: new Date().toISOString() };
+      }
+      if (c.command && c.command.id) {
+        c.command = {
+          id: String(c.command.id),
+          type: c.command.type || "run_now",
+          at: c.command.at || ""
+        };
+        c.manualTriggerId = c.command.id;
+      } else {
+        c.command = null;
+        c.manualTriggerId = "";
+      }
+
+      let statusManual = c.statusManual;
+      let statusAuto = c.statusAuto;
+      if ((!statusManual || !statusManual.phase) && (!statusAuto || !statusAuto.phase)) {
+        const old = c.status || c.lastResult;
+        if (old) {
+          const n = normStatus({
+            phase: old.phase || (old.ok ? "success" : (String(old.reason || "").indexOf("等待") >= 0 ? "pending" : "failure")),
+            ok: old.ok,
+            reason: old.reason,
+            at: old.at,
+            source: old.source
+          }, "");
+          if (n.source === "manual") statusManual = n;
+          else if (n.source === "auto") statusAuto = n;
+        }
+      }
+      c.statusManual = normStatus(statusManual, "manual");
+      c.statusAuto = normStatus(statusAuto, "auto");
+      mirrorStatus(c);
+      return c;
+    }
+
+    /* ---------- 视图 ---------- */
     function showPage(name) {
+      state.page = name;
       document.getElementById("homePage").classList.toggle("active", name === "home");
       document.getElementById("configPage").classList.toggle("active", name === "config");
     }
-    function applyHome() {
+
+    function renderHome() {
+      const cfg = state.config;
       const orb = document.getElementById("orbBtn");
-      const manual = config.mode === "manual";
+      const manual = cfg.mode === "manual";
       document.getElementById("modeTag").textContent = manual ? "手动" : "自动";
+
+      // 颜色永远跟 enabled
+      orb.className = "orb " + (cfg.enabled ? "on" : "off") + (state.busy ? " busy" : "");
       if (manual) {
-        orb.className = "orb on" + (busy ? " busy" : "");
-        orb.textContent = "启动";
+        orb.textContent = cfg.enabled ? "启动" : "关";
       } else {
-        orb.className = "orb " + (config.enabled ? "on" : "off") + (busy ? " busy" : "");
-        orb.textContent = config.enabled ? "开" : "关";
+        orb.textContent = cfg.enabled ? "开" : "关";
       }
+
       const title = document.getElementById("statusTitle");
       const reason = document.getElementById("statusReason");
-      const lr = config.lastResult;
-      if (!lr) {
+      // 只显示当前模式对应进程的状态
+      const st = (manual ? cfg.statusManual : cfg.statusAuto) || {};
+      const planLine =
+        !manual && cfg.enabled && cfg.plannedOpenAt
+          ? ("今日 " + (cfg.plannedOpenAt || ""))
+          : "";
+
+      if (manual) {
+        if (st.phase === "success") {
+          title.className = "title ok";
+          title.textContent = "成功";
+          reason.textContent = st.reason || "";
+        } else if (st.phase === "failure") {
+          title.className = "title bad";
+          title.textContent = "失败";
+          reason.textContent = st.reason || "";
+        } else if (st.phase === "pending") {
+          title.className = "title wait";
+          title.textContent = "执行中";
+          reason.textContent = st.reason || "已发送，等待手机执行";
+        } else {
+          title.className = "title wait";
+          title.textContent = "待机";
+          reason.textContent = "";
+        }
+      } else if (st.phase === "success") {
+        title.className = "title ok";
+        title.textContent = "成功";
+        reason.textContent = st.reason || "";
+      } else if (st.phase === "pending" || planLine) {
         title.className = "title wait";
-        title.textContent = "等待";
+        title.textContent = planLine || "等待中";
+        reason.textContent = st.reason || "到达后自动打开";
+      } else if (st.phase === "failure") {
+        title.className = "title bad";
+        title.textContent = "失败";
+        reason.textContent = st.reason || "";
+      } else {
+        title.className = "title wait";
+        title.textContent = "待机";
         reason.textContent = "";
-        return;
       }
-      title.className = "title " + (lr.ok ? "ok" : "bad");
-      title.textContent = lr.ok ? "成功" : "失败";
-      reason.textContent = lr.reason || "";
     }
+
     function fillConfigForm() {
-      document.getElementById("modeAutoBtn").classList.toggle("active", config.mode === "auto");
-      document.getElementById("modeManualBtn").classList.toggle("active", config.mode === "manual");
-      document.getElementById("enableOnBtn").classList.toggle("active", !!config.enabled);
-      document.getElementById("enableOffBtn").classList.toggle("active", !config.enabled);
-      document.getElementById("schH").value = config.scheduleHour;
-      document.getElementById("schM").value = config.scheduleMinute;
-      document.getElementById("schS").value = config.scheduleSecond;
-      document.getElementById("stH").value = config.startHour;
-      document.getElementById("stM").value = config.startMinute;
-      document.getElementById("stS").value = config.startSecond;
-      document.getElementById("enH").value = config.endHour;
-      document.getElementById("enM").value = config.endMinute;
-      document.getElementById("enS").value = config.endSecond;
+      const cfg = state.config;
+      const setup = state.setup;
+      document.getElementById("modeAutoBtn").classList.toggle("active", cfg.mode === "auto");
+      document.getElementById("modeManualBtn").classList.toggle("active", cfg.mode === "manual");
+      document.getElementById("enableOnBtn").classList.toggle("active", !!cfg.enabled);
+      document.getElementById("enableOffBtn").classList.toggle("active", !cfg.enabled);
+      document.getElementById("schH").value = cfg.scheduleHour;
+      document.getElementById("schM").value = cfg.scheduleMinute;
+      document.getElementById("schS").value = cfg.scheduleSecond;
+      document.getElementById("stH").value = cfg.startHour;
+      document.getElementById("stM").value = cfg.startMinute;
+      document.getElementById("stS").value = cfg.startSecond;
+      document.getElementById("enH").value = cfg.endHour;
+      document.getElementById("enM").value = cfg.endMinute;
+      document.getElementById("enS").value = cfg.endSecond;
       document.getElementById("gistId").value = setup.gistId || "";
       document.getElementById("fileName").value = setup.fileName || "dingtalk-config.json";
       document.getElementById("token").value = setup.token || "";
     }
+
     function readConfigForm() {
+      const cur = state.config;
+      // 保存配置时原样保留另一进程的状态/计划/指令，互不覆盖
       const next = normalize({
         enabled: document.getElementById("enableOnBtn").classList.contains("active"),
         mode: document.getElementById("modeManualBtn").classList.contains("active") ? "manual" : "auto",
@@ -331,155 +464,233 @@
         endHour: document.getElementById("enH").value,
         endMinute: document.getElementById("enM").value,
         endSecond: document.getElementById("enS").value,
-        manualTriggerId: config.manualTriggerId,
-        lastResult: config.lastResult
+        command: cur.command,
+        manualTriggerId: cur.manualTriggerId,
+        statusManual: cur.statusManual,
+        statusAuto: cur.statusAuto,
+        plannedOpenAt: cur.plannedOpenAt,
+        plannedOpenDate: cur.plannedOpenDate,
+        plannedOpenTs: cur.plannedOpenTs
       });
-      const startSec = next.startHour * 3600 + next.startMinute * 60 + next.startSecond;
-      const endSec = next.endHour * 3600 + next.endMinute * 60 + next.endSecond;
-      if (endSec <= startSec) throw new Error("随机结束时间必须晚于开始时间");
+      if (toSeconds(next.startHour, next.startMinute, next.startSecond) >=
+          toSeconds(next.endHour, next.endMinute, next.endSecond)) {
+        throw new Error("随机结束时间必须晚于开始时间");
+      }
       return next;
     }
-    async function fetchGist() {
-      if (!setup.gistId || !setup.token) throw new Error("请先在配置页填写连接信息");
-      const res = await fetch("https://api.github.com/gists/" + encodeURIComponent(setup.gistId), { headers: headers() });
+
+    function setSeg(onId, offId, on) {
+      document.getElementById(onId).classList.toggle("active", on);
+      document.getElementById(offId).classList.toggle("active", !on);
+    }
+
+    /* ---------- 云端 IO ---------- */
+    async function pull() {
+      if (!hasConnection()) throw new Error("请先在配置页填写连接信息");
+      const res = await fetch(
+        "https://api.github.com/gists/" + encodeURIComponent(state.setup.gistId),
+        { headers: apiHeaders() }
+      );
       if (!res.ok) throw new Error("读取失败 " + res.status);
       const data = await res.json();
-      const file = data.files && data.files[setup.fileName || "dingtalk-config.json"];
+      const file = data.files && data.files[state.setup.fileName || "dingtalk-config.json"];
       if (!file) throw new Error("找不到配置文件");
-      config = normalize(JSON.parse(file.content || "{}"));
-      applyHome();
-      fillConfigForm();
-      return config;
+      state.config = normalize(JSON.parse(file.content || "{}"));
+      renderHome();
+      if (state.page === "config") fillConfigForm();
+      return state.config;
     }
-    async function pushGist(next) {
-      if (!setup.gistId || !setup.token) throw new Error("请先在配置页填写连接信息");
+
+    async function push(next) {
+      if (!hasConnection()) throw new Error("请先在配置页填写连接信息");
       next = normalize(next);
       const body = {
         files: {
-          [setup.fileName || "dingtalk-config.json"]: {
+          [state.setup.fileName || "dingtalk-config.json"]: {
             content: JSON.stringify(next, null, 2)
           }
         }
       };
-      const res = await fetch("https://api.github.com/gists/" + encodeURIComponent(setup.gistId), {
-        method: "PATCH",
-        headers: headers(),
-        body: JSON.stringify(body)
-      });
+      const res = await fetch(
+        "https://api.github.com/gists/" + encodeURIComponent(state.setup.gistId),
+        { method: "PATCH", headers: apiHeaders(), body: JSON.stringify(body) }
+      );
       if (!res.ok) throw new Error("保存失败 " + res.status);
-      config = next;
-      applyHome();
+      state.config = next;
+      renderHome();
+      return next;
     }
 
+    function withBusy(fn) {
+      return async function () {
+        if (state.busy) return;
+        state.busy = true;
+        renderHome();
+        try {
+          await fn();
+        } catch (e) {
+          toast(String(e.message || e));
+        } finally {
+          state.busy = false;
+          renderHome();
+        }
+      };
+    }
+
+    function stopFastWatch() {
+      if (state.fastWatch) {
+        clearInterval(state.fastWatch);
+        state.fastWatch = null;
+      }
+    }
+
+    // 执行中：0.8 秒刷一次，一有成功/失败立刻显示
+    function startFastWatch(timeoutMs) {
+      stopFastWatch();
+      const deadline = Date.now() + (timeoutMs || 45000);
+      state.fastWatch = setInterval(async function () {
+        if (!hasConnection() || state.page !== "home") return;
+        if (Date.now() > deadline) {
+          stopFastWatch();
+          return;
+        }
+        try {
+          await pull();
+          const st = state.config.statusManual || {};
+          if (st.phase === "success" || st.phase === "failure") stopFastWatch();
+        } catch (e) {}
+      }, FAST_POLL_MS);
+    }
+
+    /* ---------- 命令：主页大球 ---------- */
+    async function onOrbClick() {
+      if (!hasConnection()) {
+        showPage("config");
+        fillConfigForm();
+        toast("先完成配置");
+        return;
+      }
+      if (state.config.mode === "auto") {
+        await pull();
+      }
+      const cfg = state.config;
+
+      if (cfg.mode === "auto") {
+        // 只改开关；不动手动 command / statusManual
+        await push(Object.assign({}, cfg, { enabled: !cfg.enabled }));
+        toast(cfg.enabled ? "已关闭" : "已开启");
+        return;
+      }
+
+      if (!cfg.enabled) {
+        await push(Object.assign({}, cfg, { enabled: true }));
+        toast("已开启");
+        return;
+      }
+
+      const id = uid();
+      const now = new Date().toISOString();
+      // 只写手动字段；保留自动的 planned* / statusAuto
+      await push(Object.assign({}, cfg, {
+        enabled: true,
+        command: { id: id, type: "run_now", at: now },
+        manualTriggerId: id,
+        statusManual: {
+          phase: "pending",
+          ok: false,
+          reason: "已发送，等待手机执行",
+          at: now,
+          source: "manual"
+        }
+      }));
+      toast("已发送");
+      startFastWatch(45000);
+    }
+
+    /* ---------- 事件绑定 ---------- */
     document.getElementById("goConfigBtn").onclick = function () {
       fillConfigForm();
       showPage("config");
     };
-    document.getElementById("backHomeBtn").onclick = function () { showPage("home"); };
+    document.getElementById("backHomeBtn").onclick = function () {
+      showPage("home");
+      renderHome();
+    };
 
     document.getElementById("modeAutoBtn").onclick = function () {
-      document.getElementById("modeAutoBtn").classList.add("active");
-      document.getElementById("modeManualBtn").classList.remove("active");
+      setSeg("modeAutoBtn", "modeManualBtn", true);
     };
     document.getElementById("modeManualBtn").onclick = function () {
-      document.getElementById("modeManualBtn").classList.add("active");
-      document.getElementById("modeAutoBtn").classList.remove("active");
+      setSeg("modeManualBtn", "modeAutoBtn", true);
     };
     document.getElementById("enableOnBtn").onclick = function () {
-      document.getElementById("enableOnBtn").classList.add("active");
-      document.getElementById("enableOffBtn").classList.remove("active");
+      setSeg("enableOnBtn", "enableOffBtn", true);
     };
     document.getElementById("enableOffBtn").onclick = function () {
-      document.getElementById("enableOffBtn").classList.add("active");
-      document.getElementById("enableOnBtn").classList.remove("active");
+      setSeg("enableOffBtn", "enableOnBtn", true);
     };
 
-    document.getElementById("saveCfgBtn").onclick = async function () {
-      try {
-        saveSetup({
-          gistId: document.getElementById("gistId").value.trim(),
-          fileName: document.getElementById("fileName").value.trim() || "dingtalk-config.json",
-          token: document.getElementById("token").value.trim()
-        });
-        const next = readConfigForm();
-        await pushGist(next);
-        toast("已保存");
-        showPage("home");
-      } catch (e) {
-        toast(String(e.message || e));
-      }
-    };
-    document.getElementById("reloadCfgBtn").onclick = async function () {
-      try {
-        saveSetup({
-          gistId: document.getElementById("gistId").value.trim(),
-          fileName: document.getElementById("fileName").value.trim() || "dingtalk-config.json",
-          token: document.getElementById("token").value.trim()
-        });
-        await fetchGist();
-        toast("已读取");
-      } catch (e) {
-        toast(String(e.message || e));
-      }
-    };
+    document.getElementById("saveCfgBtn").onclick = withBusy(async function () {
+      persistSetup({
+        gistId: document.getElementById("gistId").value.trim(),
+        fileName: document.getElementById("fileName").value.trim() || "dingtalk-config.json",
+        token: document.getElementById("token").value.trim()
+      });
+      const next = readConfigForm();
+      await push(next);
+      await pull();
+      const c = state.config;
+      toast(
+        "已保存 " +
+          c.scheduleHour + ":" + pad2(c.scheduleMinute) + ":" + pad2(c.scheduleSecond) +
+          " / 随机" +
+          c.startHour + ":" + pad2(c.startMinute) + ":" + pad2(c.startSecond) +
+          "~" +
+          c.endHour + ":" + pad2(c.endMinute) + ":" + pad2(c.endSecond)
+      );
+      showPage("home");
+    });
 
-    document.getElementById("orbBtn").onclick = async function () {
-      if (busy) return;
-      if (!setup.gistId || !setup.token) {
-        showPage("config");
-        toast("先完成配置");
-        return;
-      }
-      busy = true;
-      applyHome();
-      try {
-        await fetchGist();
-        if (config.mode === "manual") {
-          if (!config.enabled) {
-            toast("每日开关为关");
-          } else {
-            const next = normalize(Object.assign({}, config, {
-              manualTriggerId: uid(),
-              lastResult: {
-                ok: false,
-                reason: "已发送，等待手机执行…",
-                at: new Date().toISOString(),
-                source: "manual"
-              }
-            }));
-            await pushGist(next);
-            toast("已发送");
-          }
-        } else {
-          await pushGist(Object.assign({}, config, { enabled: !config.enabled }));
-        }
-      } catch (e) {
-        toast(String(e.message || e));
-      } finally {
-        busy = false;
-        applyHome();
-      }
-    };
+    function pad2(n) {
+      n = parseInt(n, 10) || 0;
+      return n < 10 ? "0" + n : "" + n;
+    }
+
+    document.getElementById("reloadCfgBtn").onclick = withBusy(async function () {
+      persistSetup({
+        gistId: document.getElementById("gistId").value.trim(),
+        fileName: document.getElementById("fileName").value.trim() || "dingtalk-config.json",
+        token: document.getElementById("token").value.trim()
+      });
+      await pull();
+      fillConfigForm();
+      toast("已读取");
+    });
+
+    document.getElementById("orbBtn").onclick = withBusy(onOrbClick);
 
     async function boot() {
       fillConfigForm();
-      applyHome();
-      if (setup.gistId && setup.token) {
-        try {
-          await fetchGist();
-        } catch (e) {
-          toast(String(e.message || e));
-        }
-      } else {
+      renderHome();
+      if (!hasConnection()) {
         showPage("config");
+        return;
+      }
+      try {
+        await pull();
+      } catch (e) {
+        toast(String(e.message || e));
       }
       setInterval(async function () {
-        if (!setup.gistId || !setup.token || busy) return;
-        if (!document.getElementById("homePage").classList.contains("active")) return;
-        try { await fetchGist(); } catch (e) {}
-      }, 5000);
+        if (!hasConnection() || state.busy || state.page !== "home") return;
+        // 快刷进行中时，普通轮询让路，避免抢请求
+        if (state.fastWatch) return;
+        try { await pull(); } catch (e) {}
+      }, POLL_MS);
     }
+
     boot();
+  })();
   </script>
 </body>
 </html>
