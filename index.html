@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
+  <title>钉钉开机 · 远程控制</title>
+  <style>
+    :root {
+      --ink: #163a4a;
+      --muted: #7a8794;
+      --line: #d5dee6;
+      --bg0: #eef2f6;
+      --bg1: #d9e6ec;
+      --card: #ffffff;
+      --teal: #1f8a70;
+      --coral: #c45c4a;
+      --deep: #163a4a;
+      --sky: #1f6f8b;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 500px at 10% -10%, rgba(31,111,139,.18), transparent 55%),
+        radial-gradient(900px 400px at 100% 0%, rgba(31,138,112,.14), transparent 50%),
+        linear-gradient(165deg, var(--bg0), var(--bg1) 45%, #f7fafb);
+    }
+    .wrap { max-width: 440px; margin: 0 auto; padding: 28px 18px 48px; }
+    .hero {
+      background: linear-gradient(145deg, #163a4a, #1f6f8b 70%, #247a66);
+      color: #fff;
+      border-radius: 28px;
+      padding: 26px 22px;
+      box-shadow: 0 18px 40px rgba(22,58,74,.28);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: -40px; top: -40px;
+      width: 160px; height: 160px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.08);
+    }
+    .brand { font-size: 28px; font-weight: 750; letter-spacing: .02em; }
+    .date { margin-top: 6px; opacity: .75; font-size: 13px; }
+    .status { margin-top: 20px; font-size: 24px; font-weight: 750; }
+    .sub { margin-top: 6px; opacity: .88; font-size: 14px; line-height: 1.5; }
+    .badge {
+      display: inline-block; margin-top: 14px; padding: 6px 12px;
+      border-radius: 999px; font-size: 12px; font-weight: 750;
+      background: rgba(255,255,255,.18);
+    }
+    .badge.on { background: var(--teal); }
+    .card {
+      margin-top: 16px;
+      background: var(--card);
+      border-radius: 22px;
+      padding: 20px;
+      box-shadow: 0 10px 28px rgba(22,58,74,.08);
+      animation: rise .45s ease both;
+    }
+    .card:nth-of-type(2) { animation-delay: .05s; }
+    .card:nth-of-type(3) { animation-delay: .1s; }
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: none; }
+    }
+    .label { font-size: 15px; font-weight: 750; }
+    .hint { color: var(--muted); font-size: 12px; margin-top: 4px; line-height: 1.55; }
+    .range {
+      margin: 14px 0 0;
+      font-size: 22px; font-weight: 750; color: var(--teal);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
+    .field.full { grid-column: 1 / -1; }
+    input, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 16px;
+      color: var(--ink);
+      background: #f7fafb;
+      outline: none;
+    }
+    input:focus, textarea:focus { border-color: var(--sky); background: #fff; }
+    textarea { min-height: 72px; resize: vertical; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+    .actions { display: grid; gap: 12px; margin-top: 16px; }
+    button {
+      appearance: none; border: 0; border-radius: 16px;
+      padding: 15px 16px; font-size: 16px; font-weight: 750;
+      color: #fff; cursor: pointer;
+      transition: transform .12s ease, filter .12s ease;
+    }
+    button:active { transform: scale(.98); }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .btn-on { background: var(--teal); }
+    .btn-off { background: var(--coral); }
+    .btn-save { background: var(--deep); }
+    .btn-ghost { background: #e6eef2; color: var(--ink); }
+    .msg {
+      margin-top: 12px; font-size: 13px; color: var(--sky);
+      min-height: 1.2em; line-height: 1.4;
+    }
+    .msg.err { color: var(--coral); }
+    .hidden { display: none !important; }
+    .foot { margin-top: 18px; text-align: center; color: var(--muted); font-size: 12px; line-height: 1.6; }
+  </style>
+<script>
+(function () {
+  var existing = {};
+  try { existing = JSON.parse(localStorage.getItem("dingtalk_remote_setup_v1") || "{}") || {}; } catch (e) {}
+  if (!existing.gistId) {
+    existing.gistId = "dc02d44e3153f1119d11a06efbeafc7a";
+    existing.fileName = "dingtalk-config.json";
+    localStorage.setItem("dingtalk_remote_setup_v1", JSON.stringify(existing));
+  }
+})();
+</script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div class="brand">钉钉开机</div>
+      <div class="date" id="dateText">—</div>
+      <div class="status" id="statusText">未连接</div>
+      <div class="sub" id="statusSub">先完成下方一次性设置，即可远程控制家里那台手机。</div>
+      <div class="badge" id="badge">WAIT</div>
+    </div>
+
+    <div class="card" id="setupCard">
+      <div class="label">一次性设置（保存在本机浏览器）</div>
+      <div class="hint">不需要你自己的服务器。配置存在 GitHub Gist，本页用令牌去改它。</div>
+      <div class="grid">
+        <label class="field full">Gist ID
+          <input id="gistId" placeholder="例如 a1b2c3d4e5f6..." autocomplete="off" />
+        </label>
+        <label class="field full">文件名
+          <input id="fileName" value="dingtalk-config.json" autocomplete="off" />
+        </label>
+        <label class="field full">GitHub Token（只要 gist 权限）
+          <input id="token" type="password" placeholder="ghp_..." autocomplete="off" />
+        </label>
+      </div>
+      <div class="actions">
+        <button class="btn-save" id="saveSetupBtn" type="button">保存并连接</button>
+        <button class="btn-ghost" id="clearSetupBtn" type="button">清除本机设置</button>
+      </div>
+      <div class="msg" id="setupMsg"></div>
+    </div>
+
+    <div class="card hidden" id="ctrlCard">
+      <div class="label">今日开关</div>
+      <div class="hint">只控制是否打开钉钉，不会打卡。改完立刻写入云端，家里脚本下次读取即生效。</div>
+      <div class="actions">
+        <button id="toggleBtn" type="button">开启今日打开</button>
+      </div>
+    </div>
+
+    <div class="card hidden" id="timeCard">
+      <div class="label">今日随机时段</div>
+      <div class="hint">脚本会在开始与结束之间抽一个随机时刻打开钉钉。</div>
+      <div class="range" id="rangeText">—</div>
+      <div class="grid">
+        <label class="field">开始 时<input id="sh" type="number" min="0" max="23" /></label>
+        <label class="field">开始 分<input id="sm" type="number" min="0" max="59" /></label>
+        <label class="field">开始 秒<input id="ss" type="number" min="0" max="59" /></label>
+        <label class="field">结束 时<input id="eh" type="number" min="0" max="23" /></label>
+        <label class="field">结束 分<input id="em" type="number" min="0" max="59" /></label>
+        <label class="field">结束 秒<input id="es" type="number" min="0" max="59" /></label>
+      </div>
+      <div class="actions">
+        <button class="btn-save" id="saveTimeBtn" type="button">保存时段</button>
+        <button class="btn-ghost" id="refreshBtn" type="button">刷新状态</button>
+      </div>
+      <div class="msg" id="ctrlMsg"></div>
+    </div>
+
+    <div class="foot">
+      无服务器方案：GitHub Gist + 本控制页<br />
+      Token 只存在当前手机浏览器，不会上传到别处
+    </div>
+  </div>
+
+  <script>
+    const DEFAULT = {
+      enabled: true,
+      startHour: 8,
+      startMinute: 28,
+      startSecond: 0,
+      endHour: 8,
+      endMinute: 30,
+      endSecond: 50
+    };
+
+    const storeKey = "dingtalk_remote_setup_v1";
+    let config = Object.assign({}, DEFAULT);
+    let setup = loadSetup();
+
+    function loadSetup() {
+      try { return JSON.parse(localStorage.getItem(storeKey) || "null") || {}; }
+      catch (e) { return {}; }
+    }
+    function saveSetupLocal(s) {
+      setup = s;
+      localStorage.setItem(storeKey, JSON.stringify(s));
+    }
+    function pad2(n) {
+      n = Number(n) || 0;
+      return n < 10 ? "0" + n : "" + n;
+    }
+    function clamp(n, min, max) {
+      n = parseInt(n, 10);
+      if (isNaN(n)) return min;
+      return Math.max(min, Math.min(max, n));
+    }
+    function normalize(raw) {
+      const c = Object.assign({}, DEFAULT, raw || {});
+      c.enabled = !!c.enabled;
+      c.startHour = clamp(c.startHour, 0, 23);
+      c.startMinute = clamp(c.startMinute, 0, 59);
+      c.startSecond = clamp(c.startSecond, 0, 59);
+      c.endHour = clamp(c.endHour, 0, 23);
+      c.endMinute = clamp(c.endMinute, 0, 59);
+      c.endSecond = clamp(c.endSecond, 0, 59);
+      return c;
+    }
+    function formatRange(c) {
+      return pad2(c.startHour) + ":" + pad2(c.startMinute) + ":" + pad2(c.startSecond) +
+        " ~ " + pad2(c.endHour) + ":" + pad2(c.endMinute) + ":" + pad2(c.endSecond);
+    }
+    function todayLabel() {
+      const d = new Date();
+      return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+    }
+    function setMsg(el, text, isErr) {
+      el.textContent = text || "";
+      el.className = "msg" + (isErr ? " err" : "");
+    }
+    function applyView() {
+      document.getElementById("dateText").textContent = todayLabel();
+      const on = !!config.enabled;
+      document.getElementById("statusText").textContent = on ? "今日开启" : "今日关闭";
+      document.getElementById("statusSub").textContent = on
+        ? "到点会在时段内随机打开钉钉，不会打卡。"
+        : "今天不会打开钉钉。";
+      const badge = document.getElementById("badge");
+      badge.textContent = on ? "ON" : "OFF";
+      badge.className = "badge" + (on ? " on" : "");
+      document.getElementById("rangeText").textContent = formatRange(config);
+      document.getElementById("sh").value = config.startHour;
+      document.getElementById("sm").value = config.startMinute;
+      document.getElementById("ss").value = config.startSecond;
+      document.getElementById("eh").value = config.endHour;
+      document.getElementById("em").value = config.endMinute;
+      document.getElementById("es").value = config.endSecond;
+      const btn = document.getElementById("toggleBtn");
+      btn.textContent = on ? "关闭今日打开" : "开启今日打开";
+      btn.className = on ? "btn-off" : "btn-on";
+    }
+    function readTimeInputs() {
+      return normalize({
+        enabled: config.enabled,
+        startHour: document.getElementById("sh").value,
+        startMinute: document.getElementById("sm").value,
+        startSecond: document.getElementById("ss").value,
+        endHour: document.getElementById("eh").value,
+        endMinute: document.getElementById("em").value,
+        endSecond: document.getElementById("es").value
+      });
+    }
+    function headers() {
+      return {
+        "Accept": "application/vnd.github+json",
+        "Authorization": "Bearer " + setup.token,
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type": "application/json"
+      };
+    }
+    async function fetchGist() {
+      const res = await fetch("https://api.github.com/gists/" + encodeURIComponent(setup.gistId), {
+        headers: headers()
+      });
+      if (!res.ok) throw new Error("读取失败 HTTP " + res.status);
+      const data = await res.json();
+      const file = data.files && data.files[setup.fileName];
+      if (!file) throw new Error("Gist 里找不到文件：" + setup.fileName);
+      const content = file.content || "";
+      config = normalize(JSON.parse(content || "{}"));
+      applyView();
+      return config;
+    }
+    async function pushGist(next, tip) {
+      const body = {
+        files: {
+          [setup.fileName]: {
+            content: JSON.stringify(normalize(next), null, 2)
+          }
+        }
+      };
+      const res = await fetch("https://api.github.com/gists/" + encodeURIComponent(setup.gistId), {
+        method: "PATCH",
+        headers: headers(),
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error("保存失败 HTTP " + res.status + " " + t.slice(0, 120));
+      }
+      config = normalize(next);
+      applyView();
+      setMsg(document.getElementById("ctrlMsg"), tip || "已保存到云端");
+    }
+    function showConnected(ok) {
+      document.getElementById("ctrlCard").classList.toggle("hidden", !ok);
+      document.getElementById("timeCard").classList.toggle("hidden", !ok);
+    }
+
+    document.getElementById("gistId").value = setup.gistId || "";
+    document.getElementById("fileName").value = setup.fileName || "dingtalk-config.json";
+    document.getElementById("token").value = setup.token || "";
+    applyView();
+
+    document.getElementById("saveSetupBtn").onclick = async function () {
+      const gistId = document.getElementById("gistId").value.trim();
+      const fileName = document.getElementById("fileName").value.trim() || "dingtalk-config.json";
+      const token = document.getElementById("token").value.trim();
+      if (!gistId || !token) {
+        setMsg(document.getElementById("setupMsg"), "请填写 Gist ID 和 Token", true);
+        return;
+      }
+      saveSetupLocal({ gistId: gistId, fileName: fileName, token: token });
+      setMsg(document.getElementById("setupMsg"), "连接中...");
+      try {
+        await fetchGist();
+        showConnected(true);
+        setMsg(document.getElementById("setupMsg"), "已连接，可以远程控制了");
+        setMsg(document.getElementById("ctrlMsg"), "");
+      } catch (e) {
+        showConnected(false);
+        setMsg(document.getElementById("setupMsg"), String(e.message || e), true);
+      }
+    };
+
+    document.getElementById("clearSetupBtn").onclick = function () {
+      localStorage.removeItem(storeKey);
+      setup = {};
+      document.getElementById("token").value = "";
+      showConnected(false);
+      setMsg(document.getElementById("setupMsg"), "已清除本机设置");
+    };
+
+    document.getElementById("toggleBtn").onclick = async function () {
+      try {
+        await pushGist({ ...config, enabled: !config.enabled }, config.enabled ? "已关闭今日打开" : "已开启今日打开");
+      } catch (e) {
+        setMsg(document.getElementById("ctrlMsg"), String(e.message || e), true);
+      }
+    };
+
+    document.getElementById("saveTimeBtn").onclick = async function () {
+      const next = readTimeInputs();
+      const startSec = next.startHour * 3600 + next.startMinute * 60 + next.startSecond;
+      const endSec = next.endHour * 3600 + next.endMinute * 60 + next.endSecond;
+      if (endSec <= startSec) {
+        setMsg(document.getElementById("ctrlMsg"), "结束时间必须晚于开始时间", true);
+        return;
+      }
+      try {
+        await pushGist(next, "时段已保存：" + formatRange(next));
+      } catch (e) {
+        setMsg(document.getElementById("ctrlMsg"), String(e.message || e), true);
+      }
+    };
+
+    document.getElementById("refreshBtn").onclick = async function () {
+      try {
+        await fetchGist();
+        setMsg(document.getElementById("ctrlMsg"), "已刷新");
+      } catch (e) {
+        setMsg(document.getElementById("ctrlMsg"), String(e.message || e), true);
+      }
+    };
+
+    (async function init() {
+      if (setup.gistId && setup.token) {
+        try {
+          await fetchGist();
+          showConnected(true);
+          setMsg(document.getElementById("setupMsg"), "已自动连接");
+        } catch (e) {
+          showConnected(false);
+          setMsg(document.getElementById("setupMsg"), String(e.message || e), true);
+        }
+      }
+    })();
+  </script>
+</body>
+</html>
