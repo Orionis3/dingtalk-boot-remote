@@ -208,8 +208,8 @@
    */
   (function () {
     const STORE_KEY = "dingtalk_remote_setup_v1";
-    const POLL_MS = 3000;
-    const FAST_POLL_MS = 800;
+    const POLL_MS = 2000;
+    const FAST_POLL_MS = 250;
 
     function emptyStatus(source) {
       return { phase: "idle", ok: null, reason: "", at: "", source: source || "" };
@@ -497,6 +497,7 @@
       if (!file) throw new Error("找不到配置文件");
       state.config = normalize(JSON.parse(file.content || "{}"));
       renderHome();
+      maybeArmFastWatch();
       if (state.page === "config") fillConfigForm();
       return state.config;
     }
@@ -544,10 +545,10 @@
       }
     }
 
-    // 执行中：0.8 秒刷一次，一有成功/失败立刻显示
+    // 极速刷状态：0.25 秒一次，成功/失败立刻上屏
     function startFastWatch(timeoutMs) {
       stopFastWatch();
-      const deadline = Date.now() + (timeoutMs || 45000);
+      const deadline = Date.now() + (timeoutMs || 60000);
       state.fastWatch = setInterval(async function () {
         if (!hasConnection() || state.page !== "home") return;
         if (Date.now() > deadline) {
@@ -556,10 +557,25 @@
         }
         try {
           await pull();
-          const st = state.config.statusManual || {};
+          const cfg = state.config;
+          const st = (cfg.mode === "manual" ? cfg.statusManual : cfg.statusAuto) || {};
           if (st.phase === "success" || st.phase === "failure") stopFastWatch();
         } catch (e) {}
       }, FAST_POLL_MS);
+    }
+
+    function maybeArmFastWatch() {
+      const cfg = state.config;
+      if (!hasConnection() || state.page !== "home") return;
+      const st = (cfg.mode === "manual" ? cfg.statusManual : cfg.statusAuto) || {};
+      if (st.phase === "pending") {
+        startFastWatch(90000);
+        return;
+      }
+      if (cfg.mode === "auto" && cfg.plannedOpenTs) {
+        const left = cfg.plannedOpenTs - Date.now();
+        if (left <= 120000) startFastWatch(Math.max(left + 30000, 45000));
+      }
     }
 
     /* ---------- 命令：主页大球 ---------- */
