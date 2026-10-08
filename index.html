@@ -3,119 +3,120 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
-  <title>钉钉开机 · 远程控制</title>
+  <title>钉钉开机</title>
   <style>
     :root {
-      --ink: #163a4a;
-      --muted: #7a8794;
-      --line: #d5dee6;
-      --bg0: #eef2f6;
-      --bg1: #d9e6ec;
-      --card: #ffffff;
-      --teal: #1f8a70;
-      --coral: #c45c4a;
-      --deep: #163a4a;
-      --sky: #1f6f8b;
+      --bg: #0f1419;
+      --card: #1a222c;
+      --text: #e8eef4;
+      --muted: #8b98a5;
+      --line: #2a3542;
+      --blue: #2f6fed;
+      --blue-glow: rgba(47, 111, 237, 0.45);
+      --gray: #6b7280;
+      --ok: #3bb273;
+      --bad: #e05555;
     }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; margin: 0; }
     body {
-      margin: 0;
-      min-height: 100vh;
       font-family: "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-      color: var(--ink);
-      background:
-        radial-gradient(1200px 500px at 10% -10%, rgba(31,111,139,.18), transparent 55%),
-        radial-gradient(900px 400px at 100% 0%, rgba(31,138,112,.14), transparent 50%),
-        linear-gradient(165deg, var(--bg0), var(--bg1) 45%, #f7fafb);
+      background: radial-gradient(900px 500px at 50% 0%, #1a2740 0%, var(--bg) 55%);
+      color: var(--text);
     }
-    .wrap { max-width: 440px; margin: 0 auto; padding: 28px 18px 48px; }
-    .hero {
-      background: linear-gradient(145deg, #163a4a, #1f6f8b 70%, #247a66);
-      color: #fff;
-      border-radius: 28px;
-      padding: 26px 22px;
-      box-shadow: 0 18px 40px rgba(22,58,74,.28);
-      position: relative;
-      overflow: hidden;
+    .page { min-height: 100%; display: none; flex-direction: column; }
+    .page.active { display: flex; }
+
+    /* 主页 */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 20px 8px;
     }
-    .hero::after {
-      content: "";
-      position: absolute;
-      right: -40px; top: -40px;
-      width: 160px; height: 160px;
-      border-radius: 50%;
-      background: rgba(255,255,255,.08);
+    .brand { font-size: 18px; font-weight: 700; letter-spacing: .04em; }
+    .linkbtn {
+      border: 0; background: transparent; color: var(--text);
+      font-size: 15px; font-weight: 600; padding: 8px 4px; cursor: pointer;
     }
-    .brand { font-size: 28px; font-weight: 750; letter-spacing: .02em; }
-    .date { margin-top: 6px; opacity: .75; font-size: 13px; }
-    .status { margin-top: 20px; font-size: 24px; font-weight: 750; }
-    .sub { margin-top: 6px; opacity: .88; font-size: 14px; line-height: 1.5; }
-    .badge {
-      display: inline-block; margin-top: 14px; padding: 6px 12px;
-      border-radius: 999px; font-size: 12px; font-weight: 750;
-      background: rgba(255,255,255,.18);
+    .stage {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; padding: 12px 20px 28px;
     }
-    .badge.on { background: var(--teal); }
-    .card {
-      margin-top: 16px;
-      background: var(--card);
-      border-radius: 22px;
-      padding: 20px;
-      box-shadow: 0 10px 28px rgba(22,58,74,.08);
-      animation: rise .45s ease both;
+    .mode-tag {
+      margin-bottom: 28px; font-size: 14px; color: var(--muted); letter-spacing: .08em;
     }
-    .card:nth-of-type(2) { animation-delay: .05s; }
-    .card:nth-of-type(3) { animation-delay: .1s; }
-    @keyframes rise {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: none; }
+    .orb {
+      width: min(72vw, 280px); height: min(72vw, 280px); border-radius: 50%;
+      border: 0; cursor: pointer; color: #fff; font-size: 28px; font-weight: 750;
+      letter-spacing: .06em;
+      transition: transform .12s ease, background .25s ease, box-shadow .25s ease;
+      box-shadow: 0 20px 50px rgba(0,0,0,.35);
     }
-    .label { font-size: 15px; font-weight: 750; }
-    .hint { color: var(--muted); font-size: 12px; margin-top: 4px; line-height: 1.55; }
-    .range {
-      margin: 14px 0 0;
-      font-size: 22px; font-weight: 750; color: var(--teal);
+    .orb:active { transform: scale(.97); }
+    .orb.on {
+      background: radial-gradient(circle at 35% 30%, #5b8cff, var(--blue) 55%, #1f4fb8);
+      box-shadow: 0 0 0 14px rgba(47,111,237,.12), 0 18px 55px var(--blue-glow);
     }
-    .grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-top: 14px;
+    .orb.off {
+      background: radial-gradient(circle at 35% 30%, #9aa3ad, var(--gray) 60%, #4b5563);
+      box-shadow: 0 0 0 14px rgba(107,114,128,.1), 0 18px 40px rgba(0,0,0,.35);
+    }
+    .orb.busy { opacity: .75; pointer-events: none; }
+    .status {
+      margin-top: 36px; width: min(88vw, 360px); text-align: center;
+      min-height: 64px;
+    }
+    .status .title {
+      font-size: 18px; font-weight: 750; margin-bottom: 6px;
+    }
+    .status .title.ok { color: var(--ok); }
+    .status .title.bad { color: var(--bad); }
+    .status .title.wait { color: var(--muted); }
+    .status .reason { font-size: 14px; color: var(--muted); line-height: 1.5; }
+
+    /* 配置页 */
+    .cfg-head {
+      display: flex; align-items: center; gap: 8px;
+      padding: 18px 16px 10px;
+    }
+    .cfg-head h1 { font-size: 20px; margin: 0; flex: 1; }
+    .cfg-body { padding: 8px 16px 32px; overflow: auto; }
+    .block {
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 18px; padding: 16px; margin-bottom: 12px;
+    }
+    .block h2 { margin: 0 0 12px; font-size: 15px; font-weight: 700; }
+    .row {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px;
     }
     .field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
     .field.full { grid-column: 1 / -1; }
-    input, textarea {
-      width: 100%;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 12px;
-      font-size: 16px;
-      color: var(--ink);
-      background: #f7fafb;
-      outline: none;
+    input, select {
+      width: 100%; border: 1px solid var(--line); border-radius: 12px;
+      padding: 12px; font-size: 16px; color: var(--text); background: #12181f; outline: none;
     }
-    input:focus, textarea:focus { border-color: var(--sky); background: #fff; }
-    textarea { min-height: 72px; resize: vertical; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
-    .actions { display: grid; gap: 12px; margin-top: 16px; }
-    button {
-      appearance: none; border: 0; border-radius: 16px;
-      padding: 15px 16px; font-size: 16px; font-weight: 750;
-      color: #fff; cursor: pointer;
-      transition: transform .12s ease, filter .12s ease;
+    input:focus, select:focus { border-color: var(--blue); }
+    .seg {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
     }
-    button:active { transform: scale(.98); }
-    button:disabled { opacity: .55; cursor: not-allowed; }
-    .btn-on { background: var(--teal); }
-    .btn-off { background: var(--coral); }
-    .btn-save { background: var(--deep); }
-    .btn-ghost { background: #e6eef2; color: var(--ink); }
-    .msg {
-      margin-top: 12px; font-size: 13px; color: var(--sky);
-      min-height: 1.2em; line-height: 1.4;
+    .seg button {
+      border: 1px solid var(--line); background: #12181f; color: var(--muted);
+      border-radius: 12px; padding: 12px; font-size: 15px; font-weight: 700; cursor: pointer;
     }
-    .msg.err { color: var(--coral); }
-    .hidden { display: none !important; }
-    .foot { margin-top: 18px; text-align: center; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .seg button.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+    .actions { display: grid; gap: 10px; margin-top: 8px; }
+    .btn {
+      border: 0; border-radius: 14px; padding: 14px; font-size: 16px; font-weight: 750;
+      cursor: pointer; color: #fff;
+    }
+    .btn.primary { background: var(--blue); }
+    .btn.ghost { background: #243040; color: var(--text); }
+    .toast {
+      position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+      background: rgba(20,26,34,.92); color: #fff; padding: 10px 16px; border-radius: 999px;
+      font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s ease;
+      z-index: 20;
+    }
+    .toast.show { opacity: 1; }
   </style>
 <script>
 (function () {
@@ -130,95 +131,114 @@
 </script>
 </head>
 <body>
-  <div class="wrap">
-    <div class="hero">
+  <div class="page active" id="homePage">
+    <div class="topbar">
       <div class="brand">钉钉开机</div>
-      <div class="date" id="dateText">—</div>
-      <div class="status" id="statusText">未连接</div>
-      <div class="sub" id="statusSub">先完成下方一次性设置，即可远程控制家里那台手机。</div>
-      <div class="badge" id="badge">WAIT</div>
+      <button class="linkbtn" id="goConfigBtn" type="button">配置</button>
     </div>
-
-    <div class="card" id="setupCard">
-      <div class="label">一次性设置（保存在本机浏览器）</div>
-      <div class="hint">不需要你自己的服务器。配置存在 GitHub Gist，本页用令牌去改它。</div>
-      <div class="grid">
-        <label class="field full">Gist ID
-          <input id="gistId" placeholder="例如 a1b2c3d4e5f6..." autocomplete="off" />
-        </label>
-        <label class="field full">文件名
-          <input id="fileName" value="dingtalk-config.json" autocomplete="off" />
-        </label>
-        <label class="field full">GitHub Token（只要 gist 权限）
-          <input id="token" type="password" placeholder="ghp_..." autocomplete="off" />
-        </label>
+    <div class="stage">
+      <div class="mode-tag" id="modeTag">自动</div>
+      <button class="orb off" id="orbBtn" type="button">关</button>
+      <div class="status" id="statusBox">
+        <div class="title wait" id="statusTitle">等待</div>
+        <div class="reason" id="statusReason"></div>
       </div>
-      <div class="actions">
-        <button class="btn-save" id="saveSetupBtn" type="button">保存并连接</button>
-        <button class="btn-ghost" id="clearSetupBtn" type="button">清除本机设置</button>
-      </div>
-      <div class="msg" id="setupMsg"></div>
-    </div>
-
-    <div class="card hidden" id="ctrlCard">
-      <div class="label">今日开关</div>
-      <div class="hint">只控制是否打开钉钉，不会打卡。改完立刻写入云端，家里脚本下次读取即生效。</div>
-      <div class="actions">
-        <button id="toggleBtn" type="button">开启今日打开</button>
-      </div>
-    </div>
-
-    <div class="card hidden" id="timeCard">
-      <div class="label">今日随机时段</div>
-      <div class="hint">脚本会在开始与结束之间抽一个随机时刻打开钉钉。</div>
-      <div class="range" id="rangeText">—</div>
-      <div class="grid">
-        <label class="field">开始 时<input id="sh" type="number" min="0" max="23" /></label>
-        <label class="field">开始 分<input id="sm" type="number" min="0" max="59" /></label>
-        <label class="field">开始 秒<input id="ss" type="number" min="0" max="59" /></label>
-        <label class="field">结束 时<input id="eh" type="number" min="0" max="23" /></label>
-        <label class="field">结束 分<input id="em" type="number" min="0" max="59" /></label>
-        <label class="field">结束 秒<input id="es" type="number" min="0" max="59" /></label>
-      </div>
-      <div class="actions">
-        <button class="btn-save" id="saveTimeBtn" type="button">保存时段</button>
-        <button class="btn-ghost" id="refreshBtn" type="button">刷新状态</button>
-      </div>
-      <div class="msg" id="ctrlMsg"></div>
-    </div>
-
-    <div class="foot">
-      无服务器方案：GitHub Gist + 本控制页<br />
-      Token 只存在当前手机浏览器，不会上传到别处
     </div>
   </div>
 
+  <div class="page" id="configPage">
+    <div class="cfg-head">
+      <button class="linkbtn" id="backHomeBtn" type="button">返回</button>
+      <h1>配置</h1>
+    </div>
+    <div class="cfg-body">
+      <div class="block">
+        <h2>模式</h2>
+        <div class="seg">
+          <button type="button" id="modeAutoBtn">自动</button>
+          <button type="button" id="modeManualBtn">手动</button>
+        </div>
+      </div>
+
+      <div class="block">
+        <h2>每日开关</h2>
+        <div class="seg">
+          <button type="button" id="enableOnBtn">开</button>
+          <button type="button" id="enableOffBtn">关</button>
+        </div>
+      </div>
+
+      <div class="block">
+        <h2>脚本开始运行时间</h2>
+        <div class="row">
+          <label class="field">时<input id="schH" type="number" min="0" max="23" /></label>
+          <label class="field">分<input id="schM" type="number" min="0" max="59" /></label>
+          <label class="field">秒<input id="schS" type="number" min="0" max="59" /></label>
+        </div>
+      </div>
+
+      <div class="block">
+        <h2>随机开始时间</h2>
+        <div class="row">
+          <label class="field">时<input id="stH" type="number" min="0" max="23" /></label>
+          <label class="field">分<input id="stM" type="number" min="0" max="59" /></label>
+          <label class="field">秒<input id="stS" type="number" min="0" max="59" /></label>
+        </div>
+        <h2 style="margin-top:14px">随机结束时间</h2>
+        <div class="row">
+          <label class="field">时<input id="enH" type="number" min="0" max="23" /></label>
+          <label class="field">分<input id="enM" type="number" min="0" max="59" /></label>
+          <label class="field">秒<input id="enS" type="number" min="0" max="59" /></label>
+        </div>
+      </div>
+
+      <div class="block">
+        <h2>连接</h2>
+        <div class="row">
+          <label class="field full">Gist ID<input id="gistId" autocomplete="off" /></label>
+          <label class="field full">文件名<input id="fileName" value="dingtalk-config.json" autocomplete="off" /></label>
+          <label class="field full">Token<input id="token" type="password" autocomplete="off" /></label>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn primary" id="saveCfgBtn" type="button">保存</button>
+        <button class="btn ghost" id="reloadCfgBtn" type="button">重新读取</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
   <script>
+    const STORE_KEY = "dingtalk_remote_setup_v1";
     const DEFAULT = {
       enabled: true,
+      mode: "auto",
+      scheduleHour: 8,
+      scheduleMinute: 27,
+      scheduleSecond: 0,
       startHour: 8,
       startMinute: 28,
       startSecond: 0,
       endHour: 8,
       endMinute: 30,
-      endSecond: 50
+      endSecond: 50,
+      manualTriggerId: "",
+      lastResult: null
     };
 
-    const storeKey = "dingtalk_remote_setup_v1";
-    let config = Object.assign({}, DEFAULT);
     let setup = loadSetup();
+    let config = Object.assign({}, DEFAULT);
+    let busy = false;
 
     function loadSetup() {
-      try { return JSON.parse(localStorage.getItem(storeKey) || "null") || {}; }
+      try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}") || {}; }
       catch (e) { return {}; }
     }
-    function saveSetupLocal(s) {
+    function saveSetup(s) {
       setup = s;
-      localStorage.setItem(storeKey, JSON.stringify(s));
-    }
-    function pad2(n) {
-      n = Number(n) || 0;
-      return n < 10 ? "0" + n : "" + n;
+      localStorage.setItem(STORE_KEY, JSON.stringify(s));
     }
     function clamp(n, min, max) {
       n = parseInt(n, 10);
@@ -228,57 +248,21 @@
     function normalize(raw) {
       const c = Object.assign({}, DEFAULT, raw || {});
       c.enabled = !!c.enabled;
-      c.startHour = clamp(c.startHour, 0, 23);
-      c.startMinute = clamp(c.startMinute, 0, 59);
-      c.startSecond = clamp(c.startSecond, 0, 59);
-      c.endHour = clamp(c.endHour, 0, 23);
-      c.endMinute = clamp(c.endMinute, 0, 59);
-      c.endSecond = clamp(c.endSecond, 0, 59);
+      c.mode = c.mode === "manual" ? "manual" : "auto";
+      ["scheduleHour","startHour","endHour"].forEach((k) => c[k] = clamp(c[k], 0, 23));
+      ["scheduleMinute","scheduleSecond","startMinute","startSecond","endMinute","endSecond"].forEach((k) => c[k] = clamp(c[k], 0, 59));
+      c.manualTriggerId = c.manualTriggerId ? String(c.manualTriggerId) : "";
       return c;
     }
-    function formatRange(c) {
-      return pad2(c.startHour) + ":" + pad2(c.startMinute) + ":" + pad2(c.startSecond) +
-        " ~ " + pad2(c.endHour) + ":" + pad2(c.endMinute) + ":" + pad2(c.endSecond);
+    function toast(msg) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.classList.add("show");
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => el.classList.remove("show"), 1800);
     }
-    function todayLabel() {
-      const d = new Date();
-      return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
-    }
-    function setMsg(el, text, isErr) {
-      el.textContent = text || "";
-      el.className = "msg" + (isErr ? " err" : "");
-    }
-    function applyView() {
-      document.getElementById("dateText").textContent = todayLabel();
-      const on = !!config.enabled;
-      document.getElementById("statusText").textContent = on ? "今日开启" : "今日关闭";
-      document.getElementById("statusSub").textContent = on
-        ? "到点会在时段内随机打开钉钉，不会打卡。"
-        : "今天不会打开钉钉。";
-      const badge = document.getElementById("badge");
-      badge.textContent = on ? "ON" : "OFF";
-      badge.className = "badge" + (on ? " on" : "");
-      document.getElementById("rangeText").textContent = formatRange(config);
-      document.getElementById("sh").value = config.startHour;
-      document.getElementById("sm").value = config.startMinute;
-      document.getElementById("ss").value = config.startSecond;
-      document.getElementById("eh").value = config.endHour;
-      document.getElementById("em").value = config.endMinute;
-      document.getElementById("es").value = config.endSecond;
-      const btn = document.getElementById("toggleBtn");
-      btn.textContent = on ? "关闭今日打开" : "开启今日打开";
-      btn.className = on ? "btn-off" : "btn-on";
-    }
-    function readTimeInputs() {
-      return normalize({
-        enabled: config.enabled,
-        startHour: document.getElementById("sh").value,
-        startMinute: document.getElementById("sm").value,
-        startSecond: document.getElementById("ss").value,
-        endHour: document.getElementById("eh").value,
-        endMinute: document.getElementById("em").value,
-        endSecond: document.getElementById("es").value
-      });
+    function uid() {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     }
     function headers() {
       return {
@@ -288,24 +272,92 @@
         "Content-Type": "application/json"
       };
     }
-    async function fetchGist() {
-      const res = await fetch("https://api.github.com/gists/" + encodeURIComponent(setup.gistId), {
-        headers: headers()
+    function showPage(name) {
+      document.getElementById("homePage").classList.toggle("active", name === "home");
+      document.getElementById("configPage").classList.toggle("active", name === "config");
+    }
+    function applyHome() {
+      const orb = document.getElementById("orbBtn");
+      const manual = config.mode === "manual";
+      document.getElementById("modeTag").textContent = manual ? "手动" : "自动";
+      if (manual) {
+        orb.className = "orb on" + (busy ? " busy" : "");
+        orb.textContent = "启动";
+      } else {
+        orb.className = "orb " + (config.enabled ? "on" : "off") + (busy ? " busy" : "");
+        orb.textContent = config.enabled ? "开" : "关";
+      }
+      const title = document.getElementById("statusTitle");
+      const reason = document.getElementById("statusReason");
+      const lr = config.lastResult;
+      if (!lr) {
+        title.className = "title wait";
+        title.textContent = "等待";
+        reason.textContent = "";
+        return;
+      }
+      title.className = "title " + (lr.ok ? "ok" : "bad");
+      title.textContent = lr.ok ? "成功" : "失败";
+      reason.textContent = lr.reason || "";
+    }
+    function fillConfigForm() {
+      document.getElementById("modeAutoBtn").classList.toggle("active", config.mode === "auto");
+      document.getElementById("modeManualBtn").classList.toggle("active", config.mode === "manual");
+      document.getElementById("enableOnBtn").classList.toggle("active", !!config.enabled);
+      document.getElementById("enableOffBtn").classList.toggle("active", !config.enabled);
+      document.getElementById("schH").value = config.scheduleHour;
+      document.getElementById("schM").value = config.scheduleMinute;
+      document.getElementById("schS").value = config.scheduleSecond;
+      document.getElementById("stH").value = config.startHour;
+      document.getElementById("stM").value = config.startMinute;
+      document.getElementById("stS").value = config.startSecond;
+      document.getElementById("enH").value = config.endHour;
+      document.getElementById("enM").value = config.endMinute;
+      document.getElementById("enS").value = config.endSecond;
+      document.getElementById("gistId").value = setup.gistId || "";
+      document.getElementById("fileName").value = setup.fileName || "dingtalk-config.json";
+      document.getElementById("token").value = setup.token || "";
+    }
+    function readConfigForm() {
+      const next = normalize({
+        enabled: document.getElementById("enableOnBtn").classList.contains("active"),
+        mode: document.getElementById("modeManualBtn").classList.contains("active") ? "manual" : "auto",
+        scheduleHour: document.getElementById("schH").value,
+        scheduleMinute: document.getElementById("schM").value,
+        scheduleSecond: document.getElementById("schS").value,
+        startHour: document.getElementById("stH").value,
+        startMinute: document.getElementById("stM").value,
+        startSecond: document.getElementById("stS").value,
+        endHour: document.getElementById("enH").value,
+        endMinute: document.getElementById("enM").value,
+        endSecond: document.getElementById("enS").value,
+        manualTriggerId: config.manualTriggerId,
+        lastResult: config.lastResult
       });
-      if (!res.ok) throw new Error("读取失败 HTTP " + res.status);
+      const startSec = next.startHour * 3600 + next.startMinute * 60 + next.startSecond;
+      const endSec = next.endHour * 3600 + next.endMinute * 60 + next.endSecond;
+      if (endSec <= startSec) throw new Error("随机结束时间必须晚于开始时间");
+      return next;
+    }
+    async function fetchGist() {
+      if (!setup.gistId || !setup.token) throw new Error("请先在配置页填写连接信息");
+      const res = await fetch("https://api.github.com/gists/" + encodeURIComponent(setup.gistId), { headers: headers() });
+      if (!res.ok) throw new Error("读取失败 " + res.status);
       const data = await res.json();
-      const file = data.files && data.files[setup.fileName];
-      if (!file) throw new Error("Gist 里找不到文件：" + setup.fileName);
-      const content = file.content || "";
-      config = normalize(JSON.parse(content || "{}"));
-      applyView();
+      const file = data.files && data.files[setup.fileName || "dingtalk-config.json"];
+      if (!file) throw new Error("找不到配置文件");
+      config = normalize(JSON.parse(file.content || "{}"));
+      applyHome();
+      fillConfigForm();
       return config;
     }
-    async function pushGist(next, tip) {
+    async function pushGist(next) {
+      if (!setup.gistId || !setup.token) throw new Error("请先在配置页填写连接信息");
+      next = normalize(next);
       const body = {
         files: {
-          [setup.fileName]: {
-            content: JSON.stringify(normalize(next), null, 2)
+          [setup.fileName || "dingtalk-config.json"]: {
+            content: JSON.stringify(next, null, 2)
           }
         }
       };
@@ -314,97 +366,120 @@
         headers: headers(),
         body: JSON.stringify(body)
       });
-      if (!res.ok) {
-        const t = await res.text();
-        throw new Error("保存失败 HTTP " + res.status + " " + t.slice(0, 120));
-      }
-      config = normalize(next);
-      applyView();
-      setMsg(document.getElementById("ctrlMsg"), tip || "已保存到云端");
-    }
-    function showConnected(ok) {
-      document.getElementById("ctrlCard").classList.toggle("hidden", !ok);
-      document.getElementById("timeCard").classList.toggle("hidden", !ok);
+      if (!res.ok) throw new Error("保存失败 " + res.status);
+      config = next;
+      applyHome();
     }
 
-    document.getElementById("gistId").value = setup.gistId || "";
-    document.getElementById("fileName").value = setup.fileName || "dingtalk-config.json";
-    document.getElementById("token").value = setup.token || "";
-    applyView();
+    document.getElementById("goConfigBtn").onclick = function () {
+      fillConfigForm();
+      showPage("config");
+    };
+    document.getElementById("backHomeBtn").onclick = function () { showPage("home"); };
 
-    document.getElementById("saveSetupBtn").onclick = async function () {
-      const gistId = document.getElementById("gistId").value.trim();
-      const fileName = document.getElementById("fileName").value.trim() || "dingtalk-config.json";
-      const token = document.getElementById("token").value.trim();
-      if (!gistId || !token) {
-        setMsg(document.getElementById("setupMsg"), "请填写 Gist ID 和 Token", true);
+    document.getElementById("modeAutoBtn").onclick = function () {
+      document.getElementById("modeAutoBtn").classList.add("active");
+      document.getElementById("modeManualBtn").classList.remove("active");
+    };
+    document.getElementById("modeManualBtn").onclick = function () {
+      document.getElementById("modeManualBtn").classList.add("active");
+      document.getElementById("modeAutoBtn").classList.remove("active");
+    };
+    document.getElementById("enableOnBtn").onclick = function () {
+      document.getElementById("enableOnBtn").classList.add("active");
+      document.getElementById("enableOffBtn").classList.remove("active");
+    };
+    document.getElementById("enableOffBtn").onclick = function () {
+      document.getElementById("enableOffBtn").classList.add("active");
+      document.getElementById("enableOnBtn").classList.remove("active");
+    };
+
+    document.getElementById("saveCfgBtn").onclick = async function () {
+      try {
+        saveSetup({
+          gistId: document.getElementById("gistId").value.trim(),
+          fileName: document.getElementById("fileName").value.trim() || "dingtalk-config.json",
+          token: document.getElementById("token").value.trim()
+        });
+        const next = readConfigForm();
+        await pushGist(next);
+        toast("已保存");
+        showPage("home");
+      } catch (e) {
+        toast(String(e.message || e));
+      }
+    };
+    document.getElementById("reloadCfgBtn").onclick = async function () {
+      try {
+        saveSetup({
+          gistId: document.getElementById("gistId").value.trim(),
+          fileName: document.getElementById("fileName").value.trim() || "dingtalk-config.json",
+          token: document.getElementById("token").value.trim()
+        });
+        await fetchGist();
+        toast("已读取");
+      } catch (e) {
+        toast(String(e.message || e));
+      }
+    };
+
+    document.getElementById("orbBtn").onclick = async function () {
+      if (busy) return;
+      if (!setup.gistId || !setup.token) {
+        showPage("config");
+        toast("先完成配置");
         return;
       }
-      saveSetupLocal({ gistId: gistId, fileName: fileName, token: token });
-      setMsg(document.getElementById("setupMsg"), "连接中...");
+      busy = true;
+      applyHome();
       try {
         await fetchGist();
-        showConnected(true);
-        setMsg(document.getElementById("setupMsg"), "已连接，可以远程控制了");
-        setMsg(document.getElementById("ctrlMsg"), "");
+        if (config.mode === "manual") {
+          if (!config.enabled) {
+            toast("每日开关为关");
+          } else {
+            const next = normalize(Object.assign({}, config, {
+              manualTriggerId: uid(),
+              lastResult: {
+                ok: false,
+                reason: "已发送，等待手机执行…",
+                at: new Date().toISOString(),
+                source: "manual"
+              }
+            }));
+            await pushGist(next);
+            toast("已发送");
+          }
+        } else {
+          await pushGist(Object.assign({}, config, { enabled: !config.enabled }));
+        }
       } catch (e) {
-        showConnected(false);
-        setMsg(document.getElementById("setupMsg"), String(e.message || e), true);
+        toast(String(e.message || e));
+      } finally {
+        busy = false;
+        applyHome();
       }
     };
 
-    document.getElementById("clearSetupBtn").onclick = function () {
-      localStorage.removeItem(storeKey);
-      setup = {};
-      document.getElementById("token").value = "";
-      showConnected(false);
-      setMsg(document.getElementById("setupMsg"), "已清除本机设置");
-    };
-
-    document.getElementById("toggleBtn").onclick = async function () {
-      try {
-        await pushGist({ ...config, enabled: !config.enabled }, config.enabled ? "已关闭今日打开" : "已开启今日打开");
-      } catch (e) {
-        setMsg(document.getElementById("ctrlMsg"), String(e.message || e), true);
-      }
-    };
-
-    document.getElementById("saveTimeBtn").onclick = async function () {
-      const next = readTimeInputs();
-      const startSec = next.startHour * 3600 + next.startMinute * 60 + next.startSecond;
-      const endSec = next.endHour * 3600 + next.endMinute * 60 + next.endSecond;
-      if (endSec <= startSec) {
-        setMsg(document.getElementById("ctrlMsg"), "结束时间必须晚于开始时间", true);
-        return;
-      }
-      try {
-        await pushGist(next, "时段已保存：" + formatRange(next));
-      } catch (e) {
-        setMsg(document.getElementById("ctrlMsg"), String(e.message || e), true);
-      }
-    };
-
-    document.getElementById("refreshBtn").onclick = async function () {
-      try {
-        await fetchGist();
-        setMsg(document.getElementById("ctrlMsg"), "已刷新");
-      } catch (e) {
-        setMsg(document.getElementById("ctrlMsg"), String(e.message || e), true);
-      }
-    };
-
-    (async function init() {
+    async function boot() {
+      fillConfigForm();
+      applyHome();
       if (setup.gistId && setup.token) {
         try {
           await fetchGist();
-          showConnected(true);
-          setMsg(document.getElementById("setupMsg"), "已自动连接");
         } catch (e) {
-          showConnected(false);
-          setMsg(document.getElementById("setupMsg"), String(e.message || e), true);
+          toast(String(e.message || e));
         }
+      } else {
+        showPage("config");
       }
-    })();
+      setInterval(async function () {
+        if (!setup.gistId || !setup.token || busy) return;
+        if (!document.getElementById("homePage").classList.contains("active")) return;
+        try { await fetchGist(); } catch (e) {}
+      }, 5000);
+    }
+    boot();
   </script>
 </body>
 </html>
