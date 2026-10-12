@@ -214,9 +214,9 @@
    */
   (function () {
     const STORE_KEY = "dingtalk_remote_setup_v1";
-    // 网页和手机共用 GitHub Token，轮询太快会 403 限流
-    const POLL_MS = 5000;
-    const FAST_POLL_MS = 1200;
+    // 读已改 raw，可稍快刷状态；写操作仍要省着点
+    const POLL_MS = 4000;
+    const FAST_POLL_MS = 1000;
 
     function emptyStatus(source) {
       return { phase: "idle", ok: null, reason: "", at: "", source: source || "" };
@@ -535,25 +535,35 @@
     }
 
     /* ---------- 云端 IO ---------- */
-    async function pull() {
-      if (!hasConnection()) throw new Error("请先在配置页填写连接信息");
-      const res = await fetch(
-        "https://api.github.com/gists/" + encodeURIComponent(state.setup.gistId),
-        { headers: apiHeaders() }
+    // 读：走 raw，不消耗 GitHub API 配额（避免和手机一起 403）
+    function rawConfigUrl() {
+      const id = state.setup.gistId;
+      const name = state.setup.fileName || "dingtalk-config.json";
+      return (
+        "https://gist.githubusercontent.com/Orionis3/" +
+        encodeURIComponent(id) +
+        "/raw/" +
+        encodeURIComponent(name) +
+        "?_=" +
+        Date.now()
       );
+    }
+
+    async function pull() {
+      if (!state.setup.gistId) throw new Error("请先在配置页填写连接信息");
+      const res = await fetch(rawConfigUrl(), { cache: "no-store" });
       if (!res.ok) throw new Error("读取失败 " + res.status);
-      const data = await res.json();
-      const file = data.files && data.files[state.setup.fileName || "dingtalk-config.json"];
-      if (!file) throw new Error("找不到配置文件");
-      state.config = normalize(JSON.parse(file.content || "{}"));
+      const text = await res.text();
+      state.config = normalize(JSON.parse(text || "{}"));
       renderHome();
       maybeArmFastWatch();
       if (state.page === "config") fillConfigForm();
       return state.config;
     }
 
+    // 写：才用 API（保存配置 / 发手动指令）
     async function push(next) {
-      if (!hasConnection()) throw new Error("请先在配置页填写连接信息");
+      if (!hasConnection()) throw new Error("请先在配置页填写 Token");
       next = normalize(next);
       const body = {
         files: {
@@ -566,6 +576,9 @@
         "https://api.github.com/gists/" + encodeURIComponent(state.setup.gistId),
         { method: "PATCH", headers: apiHeaders(), body: JSON.stringify(body) }
       );
+      if (res.status === 403) {
+        throw new Error("GitHub 限流中，请等 2～5 分钟再保存/启动");
+      }
       if (!res.ok) throw new Error("保存失败 " + res.status);
       state.config = next;
       renderHome();
