@@ -71,6 +71,11 @@
     .status .title.bad { color: var(--bad); }
     .status .title.wait { color: var(--muted); }
     .status .reason { font-size: 14px; color: var(--muted); line-height: 1.5; }
+    .phone-line {
+      margin-top: 10px; font-size: 13px; letter-spacing: .04em;
+    }
+    .phone-line.on { color: var(--ok); }
+    .phone-line.off { color: var(--bad); }
 
     .cfg-head {
       display: flex; align-items: center; gap: 8px;
@@ -130,6 +135,7 @@
       <div class="status" id="statusBox">
         <div class="title wait" id="statusTitle">待机</div>
         <div class="reason" id="statusReason"></div>
+        <div class="phone-line off" id="phoneLine">手机：检测中…</div>
       </div>
     </div>
   </div>
@@ -208,8 +214,8 @@
    */
   (function () {
     const STORE_KEY = "dingtalk_remote_setup_v1";
-    const POLL_MS = 2000;
-    const FAST_POLL_MS = 250;
+    const POLL_MS = 1500;
+    const FAST_POLL_MS = 150;
 
     function emptyStatus(source) {
       return { phase: "idle", ok: null, reason: "", at: "", source: source || "" };
@@ -234,6 +240,7 @@
       plannedOpenAt: "",
       plannedOpenDate: "",
       plannedOpenTs: 0,
+      phoneOnlineAt: "",
       status: emptyStatus(""),
       lastResult: null
     };
@@ -391,40 +398,68 @@
           ? ("今日 " + (cfg.plannedOpenAt || ""))
           : "";
 
-      if (manual) {
+      function paintStatus() {
         if (st.phase === "success") {
           title.className = "title ok";
-          title.textContent = "成功";
-          reason.textContent = st.reason || "";
-        } else if (st.phase === "failure") {
+          title.textContent = "打开成功";
+          reason.textContent = st.reason || "已成功打开钉钉";
+          return;
+        }
+        if (st.phase === "failure") {
           title.className = "title bad";
           title.textContent = "失败";
           reason.textContent = st.reason || "";
-        } else if (st.phase === "pending") {
-          title.className = "title wait";
-          title.textContent = "执行中";
-          reason.textContent = st.reason || "已发送，等待手机执行";
-        } else {
-          title.className = "title wait";
-          title.textContent = "待机";
-          reason.textContent = "";
+          return;
         }
-      } else if (st.phase === "success") {
-        title.className = "title ok";
-        title.textContent = "成功";
-        reason.textContent = st.reason || "";
-      } else if (st.phase === "pending" || planLine) {
-        title.className = "title wait";
-        title.textContent = planLine || "等待中";
-        reason.textContent = st.reason || "到达后自动打开";
-      } else if (st.phase === "failure") {
-        title.className = "title bad";
-        title.textContent = "失败";
-        reason.textContent = st.reason || "";
-      } else {
+        if (st.phase === "pending") {
+          title.className = "title wait";
+          // 登录过程：大标题直接显示当前步骤，便于极速感知
+          const r = st.reason || "";
+          if (r.indexOf("检测到需要登录") >= 0) {
+            title.textContent = "检测到需要登录";
+            reason.textContent = "准备自动输入密码";
+          } else if (r.indexOf("正在登录") >= 0) {
+            title.textContent = "正在登录钉钉";
+            reason.textContent = "自动填写密码中";
+          } else if (r.indexOf("登录成功") >= 0) {
+            title.textContent = "登录成功";
+            reason.textContent = "即将确认打开";
+          } else if (r.indexOf("检测登录") >= 0) {
+            title.textContent = "检测登录状态";
+            reason.textContent = r;
+          } else {
+            title.textContent = manual ? "执行中" : (planLine || "等待中");
+            reason.textContent = r || (manual ? "已发送，等待手机执行" : "到达后自动打开");
+          }
+          return;
+        }
+        if (!manual && planLine) {
+          title.className = "title wait";
+          title.textContent = planLine;
+          reason.textContent = st.reason || "到达后自动打开";
+          return;
+        }
         title.className = "title wait";
         title.textContent = "待机";
         reason.textContent = "";
+      }
+      paintStatus();
+
+      // 手机心跳：超过 20 秒无心跳 = 脚本没在跑（这才是手动/定时都没用的根因）
+      const phoneLine = document.getElementById("phoneLine");
+      const hb = cfg.phoneOnlineAt ? Date.parse(cfg.phoneOnlineAt) : 0;
+      const age = hb ? Date.now() - hb : 999999;
+      if (hb && age <= 20000) {
+        phoneLine.className = "phone-line on";
+        phoneLine.textContent = "手机：在线";
+      } else {
+        phoneLine.className = "phone-line off";
+        phoneLine.textContent = hb
+          ? "手机：离线（脚本未运行，手动/定时都不会执行）"
+          : "手机：离线（从未收到心跳，请先运行 AutoX 脚本）";
+        if (manual && st.phase === "pending") {
+          reason.textContent = "指令已发出，但家里手机脚本未运行";
+        }
       }
     }
 
