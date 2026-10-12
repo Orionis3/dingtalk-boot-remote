@@ -399,7 +399,27 @@
           ? ("今日 " + (cfg.plannedOpenAt || ""))
           : "";
 
+      const hb = cfg.phoneOnlineAt ? Date.parse(cfg.phoneOnlineAt) : 0;
+      const statusAt = st.at ? Date.parse(st.at) : 0;
+      const ageHb = hb ? Date.now() - hb : 999999;
+      const ageSt = statusAt ? Date.now() - statusAt : 999999;
+      const phoneOnline = !!(hb && ageHb <= 90000);
+      const freshStatus = ageSt <= 120000;
+
       function paintStatus() {
+        // 手机已离线：不要继续用绿色「打开成功」误导（那是上次的结果）
+        if (!phoneOnline && !freshStatus) {
+          title.className = "title wait";
+          title.textContent = "待机";
+          if (st.phase === "success") {
+            reason.textContent = "上次曾打开成功，但手机脚本已离线";
+          } else if (st.phase === "failure") {
+            reason.textContent = "上次失败：" + (st.reason || "") + "（手机已离线）";
+          } else {
+            reason.textContent = "等待家里手机脚本上线";
+          }
+          return;
+        }
         if (st.phase === "success") {
           title.className = "title ok";
           title.textContent = "打开成功";
@@ -414,7 +434,6 @@
         }
         if (st.phase === "pending") {
           title.className = "title wait";
-          // 登录过程：大标题直接显示当前步骤，便于极速感知
           const r = st.reason || "";
           if (r.indexOf("检测到需要登录") >= 0) {
             title.textContent = "检测到需要登录";
@@ -446,24 +465,16 @@
       }
       paintStatus();
 
-      // 心跳约 45 秒一次；90 秒内都算在线。最近有成功/执行中也不要误报离线
       const phoneLine = document.getElementById("phoneLine");
-      const hb = cfg.phoneOnlineAt ? Date.parse(cfg.phoneOnlineAt) : 0;
-      const statusAt = st.at ? Date.parse(st.at) : 0;
-      const ageHb = hb ? Date.now() - hb : 999999;
-      const ageSt = statusAt ? Date.now() - statusAt : 999999;
-      const recentlyActive = ageSt <= 120000 && (st.phase === "success" || st.phase === "pending" || st.phase === "failure");
-      if ((hb && ageHb <= 90000) || recentlyActive) {
+      if (phoneOnline) {
         phoneLine.className = "phone-line on";
-        phoneLine.textContent = ageHb <= 90000 ? "手机：在线" : "手机：刚执行过（心跳稍后恢复）";
+        phoneLine.textContent = "手机：在线";
+      } else if (freshStatus) {
+        phoneLine.className = "phone-line on";
+        phoneLine.textContent = "手机：刚执行过（心跳稍后恢复）";
       } else {
         phoneLine.className = "phone-line off";
-        phoneLine.textContent = hb
-          ? "手机：离线（脚本未运行或 GitHub 限流）"
-          : "手机：离线（请先运行 AutoX 脚本）";
-        if (manual && st.phase === "pending") {
-          reason.textContent = "指令已发出，但家里手机未响应（检查脚本是否在跑 / 是否 403 限流）";
-        }
+        phoneLine.textContent = "手机：离线 — 请到家里手机重新运行 AutoX 脚本";
       }
     }
 
