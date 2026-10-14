@@ -535,33 +535,25 @@
     }
 
     /* ---------- 云端 IO ---------- */
-    // 读：走 raw，不消耗 GitHub API 配额（避免和手机一起 403）
-    function rawConfigUrl() {
-      const id = state.setup.gistId;
-      const name = state.setup.fileName || "dingtalk-config.json";
-      return (
-        "https://gist.githubusercontent.com/Orionis3/" +
-        encodeURIComponent(id) +
-        "/raw/" +
-        encodeURIComponent(name) +
-        "?_=" +
-        Date.now()
-      );
-    }
-
+    // 读/写都走 Token + GitHub API
     async function pull() {
-      if (!state.setup.gistId) throw new Error("请先在配置页填写连接信息");
-      const res = await fetch(rawConfigUrl(), { cache: "no-store" });
+      if (!hasConnection()) throw new Error("请先在配置页填写连接信息");
+      const res = await fetch(
+        "https://api.github.com/gists/" + encodeURIComponent(state.setup.gistId),
+        { headers: apiHeaders(), cache: "no-store" }
+      );
+      if (res.status === 403) throw new Error("GitHub 限流中，请稍后再试");
       if (!res.ok) throw new Error("读取失败 " + res.status);
-      const text = await res.text();
-      state.config = normalize(JSON.parse(text || "{}"));
+      const data = await res.json();
+      const file = data.files && data.files[state.setup.fileName || "dingtalk-config.json"];
+      if (!file) throw new Error("找不到配置文件");
+      state.config = normalize(JSON.parse(file.content || "{}"));
       renderHome();
       maybeArmFastWatch();
       if (state.page === "config") fillConfigForm();
       return state.config;
     }
 
-    // 写：才用 API（保存配置 / 发手动指令）
     async function push(next) {
       if (!hasConnection()) throw new Error("请先在配置页填写 Token");
       next = normalize(next);
