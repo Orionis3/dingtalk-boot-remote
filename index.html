@@ -276,7 +276,7 @@
       el.textContent = msg;
       el.classList.add("show");
       clearTimeout(toast._t);
-      toast._t = setTimeout(() => el.classList.remove("show"), 1800);
+      toast._t = setTimeout(() => el.classList.remove("show"), 3500);
     }
     function apiHeaders() {
       return {
@@ -404,11 +404,21 @@
       const ageHb = hb ? Date.now() - hb : 999999;
       const ageSt = statusAt ? Date.now() - statusAt : 999999;
       const phoneOnline = !!(hb && ageHb <= 90000);
-      const freshStatus = ageSt <= 120000;
+      // pending 多半是网页刚写入，不能当成手机刚执行过
+      const phoneDoneRecently = !!(
+        ageSt <= 120000 && (st.phase === "success" || st.phase === "failure")
+      );
 
       function paintStatus() {
+        // 指令已发但手机离线：优先提示，避免「执行中」假象
+        if (st.phase === "pending" && !phoneOnline) {
+          title.className = "title bad";
+          title.textContent = "手机离线";
+          reason.textContent = "指令已发出，但家里 AutoX 未在跑 — 请重新运行脚本";
+          return;
+        }
         // 手机已离线：不要继续用绿色「打开成功」误导（那是上次的结果）
-        if (!phoneOnline && !freshStatus) {
+        if (!phoneOnline && !phoneDoneRecently) {
           title.className = "title wait";
           title.textContent = "待机";
           if (st.phase === "success") {
@@ -469,7 +479,7 @@
       if (phoneOnline) {
         phoneLine.className = "phone-line on";
         phoneLine.textContent = "手机：在线";
-      } else if (freshStatus) {
+      } else if (phoneDoneRecently) {
         phoneLine.className = "phone-line on";
         phoneLine.textContent = "手机：刚执行过（心跳稍后恢复）";
       } else {
@@ -674,7 +684,9 @@
           source: "manual"
         }
       }));
-      toast("已发送");
+      const hb = cfg.phoneOnlineAt ? Date.parse(cfg.phoneOnlineAt) : 0;
+      const online = !!(hb && Date.now() - hb <= 90000);
+      toast(online ? "已发送，等待手机执行" : "已发送，但手机离线：请重新运行 AutoX");
       startFastWatch(45000);
     }
 
