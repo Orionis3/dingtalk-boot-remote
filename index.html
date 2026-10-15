@@ -669,6 +669,16 @@
         return;
       }
 
+      // 防连点：上一条还在执行中时不再重复下发（否则手机端会陷入清理旧指令）
+      const stManual = cfg.statusManual || {};
+      const pendingAt = stManual.at ? Date.parse(stManual.at) : 0;
+      const pendingFresh = pendingAt && Date.now() - pendingAt < 90000;
+      if (stManual.phase === "pending" && pendingFresh && (cfg.command && cfg.command.id)) {
+        toast("正在执行中，请勿连点");
+        startFastWatch(45000);
+        return;
+      }
+
       const id = uid();
       const now = new Date().toISOString();
       // 只写手动字段；保留自动的 planned* / statusAuto
